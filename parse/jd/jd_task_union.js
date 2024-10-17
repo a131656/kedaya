@@ -6,20 +6,53 @@ class Main extends Template {
         this.title = "京东京享红包"
         this.cron = `${this.rand(0, 59)} ${this.rand(0, 22)} * * *`
         this.help = '3'
-        this.import = ['jdAlgo', 'logBill']
+        this.import = ['jdAlgo', 'logBill', 'jdSign']
         this.delay = 500
+        this.jdJdc = '123'
         this.hint = {
-            shareUrl: "分享链接"
+            shareUrl: "分享链接",
+            known: '风控较严,订单有异常的风险,如订单一直异常,请停用此脚本'
+        }
+        this.readme = "风控较严,算法经常变动,锁佣需谨慎,如还要使用此脚本请添加\n[jd_task_union]\nknown=1"
+    }
+
+    async uuaa() {
+        var ua = this.random([
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 15_1_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.33(0x18002129) NetType/WIFI Language/zh_CN',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.49(0x18003127) NetType/WIFI Language/zh_CN',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.49(0x18003127) NetType/WIFI Language/zh_CN',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.48(0x18003030) NetType/4G Language/zh_CN',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.42(0x18002a32) NetType/4G Language/zh_CN',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 16_7_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.48(0x1800302c) NetType/WIFI Language/zh_CN',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.49(0x18003129) NetType/4G Language/zh_HK',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.48(0x18003030) NetType/4G Language/zh_CN',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 14_8_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.48(0x18003030) NetType/WIFI Language/zh_CN',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 15_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.48(0x18003030) NetType/WIFI Language/zh_CN',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.49(0x1800312a) NetType/WIFI Language/zh_CN',], 1)[0]
+        var hashCode = s => s.split('').reduce((a, b) => {
+            a = ((a << 5) - a) + b.charCodeAt(0);
+            return a & a
+        }, 0);
+        return {
+            ua,
+            h5st: hashCode(ua)
         }
     }
 
     async prepare() {
+        if (!this.profile.known) {
+            this.jump = 1
+            return
+        }
+        var {ua, h5st} = await this.uuaa()
+        this.sign = new this.modules.jdSign()
         this.algo = new this.modules.jdAlgo({
-            referer: 'https://pro.m.jd.com/mall/active/3Rztcv2tMwdpFqWiqaAUzBAToowC/index.html',
-            version: "4.7"
+            version: "latest",
+            ua,
+            type: "wechat",
         })
         try {
-            this.assert(0, "双十一再见...")
+            // this.assert(0, "双十一再见...")
             let cookie = ''
             let url = this.profile.shareUrl || `https://u.jd.com/${this.unionId}`
             let jda = await this.curl({
@@ -27,25 +60,28 @@ class Main extends Template {
                     'response': `all`,
                     redirect: 'follow',
                     headers: {
-                        'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_1_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.28(0x18001c2e) NetType/WIFI Language/zh_CN',
-                        referer: 'https://servicewechat.com/wx91d27dbf599dff74/752/page-frame.html'
+                        'user-agent': ua,
                     }
                 }
             )
             let jdaUrl = this.match([/hrl\s*='([^\']+)'/, /hrl\s*="([^\"]+)"/], jda.content)
             cookie = `${cookie};${jda.cookie}`
             let scheme = await this.curl({
-                    'url': jdaUrl,
+                    'url': jdaUrl + `&h5st=${h5st}`,
                     maxRedirects: 0,
-                    scheme: 'openapp',
+                    scheme: 'http',
                     'response': `all`,
                     cookie,
+                    ua,
+                    referer: url
                 }
             )
             cookie = `${cookie};${scheme.cookie}`
-            let linkUrl = this.match(/"url":"([^\"]+)"/, decodeURIComponent(scheme.location))
+            let linkUrl = scheme.location
             await this.curl({
-                url: linkUrl
+                url: linkUrl,
+                referer: url,
+                'ua': ua,
             })
             let actId = this.match(/active\/(\w+)/, linkUrl)
             let unionActId = this.match(/unionActId=(\d+)/, linkUrl)
@@ -55,9 +91,11 @@ class Main extends Template {
             }
             for (let i of this.cookies.help) {
                 let shareUnion = await this.algo.curl({
-                        'url': `https://api.m.jd.com/api?functionId=shareUnionCoupon&appid=u_hongbao&_=1716943673297&loginType=2&body={"unionActId":"${unionActId}","actId":"${actId}","platform":4,"unionShareId":"","d":"${d}","supportPic":2}&client=apple&clientVersion=12.3.1&osVersion=15.1.1&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=wifi&openudid=`,
+                        'url': `https://api.m.jd.com/api?functionId=shareUnionCoupon&appid=u_hongbao&_=1716943673297&loginType=2&body={"unionActId":"${unionActId}","actId":"${actId}","platform":5,"unionShareId":"","d":"${d}","supportPic":2}&client=apple&clientVersion=12.3.1&osVersion=15.1.1&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=wifi&openudid=`,
                         cookie: `${i};${cookie}`,
-                        appId: 'c10dc'
+                        appId: 'c10dc',
+                        referer: linkUrl,
+                        ua
                     }
                 )
                 if (this.haskey(shareUnion, 'data.shareUrl')) {
@@ -95,6 +133,7 @@ class Main extends Template {
                 }
             }
         }
+        var {ua, h5st} = await this.uuaa()
         await this.shareId()
         for (let unionShareId of this.code.slice(0, 4)) {
             cookie = p.cookie
@@ -110,49 +149,60 @@ class Main extends Template {
                     redirect: 'follow',
                     cookie,
                     headers: {
-                        'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_1_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.28(0x18001c2e) NetType/WIFI Language/zh_CN',
-                        referer: 'https://servicewechat.com/wx91d27dbf599dff74/752/page-frame.html'
+                        'user-agent': ua
                     }
                 }
             )
             let jdaUrl = this.match([/hrl\s*='([^\']+)'/, /hrl\s*="([^\"]+)"/], jda.content)
             cookie = `${cookie};${jda.cookie}`
             let scheme = await this.curl({
-                    'url': jdaUrl,
+                    'url': jdaUrl + `&h5st=${h5st}`,
                     maxRedirects: 0,
-                    scheme: 'openapp',
+                    scheme: 'http',
                     'response': `all`,
                     cookie,
+                    ua,
+                    referer: url
                 }
             )
             cookie = `${cookie};${scheme.cookie}`
-            let linkUrl = this.match(/"url":"([^\"]+)"/, decodeURIComponent(scheme.location))
-            await this.curl({
-                url: linkUrl
-            })
+            let linkUrl = scheme.location
+            let query = (this.query(linkUrl, '&', 'split'))
             let actId = this.match(/active\/(\w+)/, linkUrl)
-            let unionActId = this.match(/unionActId=(\d+)/, linkUrl)
-            let d = this.match(/com\/(\w+)/, url)
-            let showCoupon = await this.algo.curl({
+            let {
+                unionActId, d, utm_source, utm_medium, utm_campaign, utm_term
+            } = query
+            let __jdv = `${this.jdJdc}|${utm_source}|${utm_campaign}|${utm_medium}|${utm_term}|${new Date().getTime()}`
+            cookie = `${cookie};__jdv=${encodeURIComponent(__jdv)}`
+            await this.curl({
+                url: linkUrl,
+                referer: url,
+                ua
+            })
+            await this.algo.set({
+                referer: linkUrl,
+                ua
+            })
+            // let showCoupon = await this.algo.curl({
+            //         url: `https://api.m.jd.com/api`,
+            //         form: `functionId=showCoupon&appid=u_hongbao&_=1729029312285&loginType=2&body={"platform":5,"unionActId":"${unionActId}","actId":"${actId}","d":"${d}","unionShareId":"${unionShareId}","type":1,"qdPageId":"MO-J2011-1","mdClickId":"jxhongbao_ck","actType":1}&client=apple&clientVersion=1.1.0&osVersion=iOS&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=&openudid=&uuid=1729028921991924762424&aid=&oaid=&ext={"idfa":""}`,
+            //         cookie,
+            //         algo: {
+            //             appId: 'c822a'
+            //         },
+            //     }
+            // )
+            let getCoupons = await this.algo.curl({
                     url: `https://api.m.jd.com/api`,
-                    form: `functionId=showCoupon&appid=u_hongbao&_=1716912812082&loginType=2&body={"actId":"${actId}","unionActId":"${unionActId}","platform":4,"unionShareId":"${unionShareId}","uiUpdateTime":1716469472000,"d":"${d}","callType":2,"actType":1}&client=apple&clientVersion=1.1.0&osVersion=iOS&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=&openudid=&uuid=17165464753211715186324&aid=&oaid=&ext={"idfa":""}&x-api-eid-token=`,
+                    form: `functionId=getCoupons&appid=u_hongbao&_=1716912812082&loginType=2&body={"platform":5,"unionActId":"${unionActId}","actId":"${actId}","d":"${d}","unionShareId":"${unionShareId}","type":1,"qdPageId":"MO-J2011-1","mdClickId":"jxhongbao_ck","actType":1}&client=apple&clientVersion=1.1.0&osVersion=iOS&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=&openudid=&uuid=17165464753211715186324&aid=&oaid=&ext={"idfa":""}&x-api-eid-token=`,
                     cookie,
                     algo: {
                         appId: 'c822a'
-                    }
+                    },
                 }
             )
-            let msg = this.haskey(showCoupon, 'msg')
+            let msg = this.haskey(getCoupons, 'msg')
             if (msg.includes('领取成功')) {
-                let getCoupons = await this.algo.curl({
-                        url: `https://api.m.jd.com/api`,
-                        form: `functionId=getCoupons&appid=u_hongbao&_=1716912812082&loginType=2&body={"platform":4,"unionActId":"${unionActId}","actId":"${actId}","d":"${d}","unionShareId":"${unionShareId}","type":1,"qdPageId":"MO-J2011-1","mdClickId":"jxhongbao_ck","actType":1}&client=apple&clientVersion=1.1.0&osVersion=iOS&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=&openudid=&uuid=17165464753211715186324&aid=&oaid=&ext={"idfa":""}&x-api-eid-token=`,
-                        cookie,
-                        algo: {
-                            appId: 'c822a'
-                        }
-                    }
-                )
                 gift.call(this, getCoupons)
             }
             else {
@@ -160,10 +210,13 @@ class Main extends Template {
                 if (msg == '达到领取上限') {
                     break
                 }
+                if (msg.includes("用户未登录")) {
+                    return
+                }
             }
         }
         let qry = await this.algo.curl({
-                'url': `https://api.m.jd.com/api?functionId=queryFullGroupInfoMap&appid=u_hongbao&_=1716946027013&loginType=2&body={"actId":"${this.dict.actId}","unionActId":"${this.dict.unionActId}","platform":4,"d":"${this.dict.d}","taskType":1,"prstate":0}&client=apple&clientVersion=12.3.1&osVersion=15.1.1&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=wifi&openudid=&aid=&oaid=`,
+                'url': `https://api.m.jd.com/api?functionId=queryFullGroupInfoMap&appid=u_hongbao&_=1716946027013&loginType=2&body={"actId":"${this.dict.actId}","unionActId":"${this.dict.unionActId}","platform":5,"d":"${this.dict.d}","taskType":1,"prstate":0}&client=apple&clientVersion=12.3.1&osVersion=15.1.1&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=wifi&openudid=&aid=&oaid=`,
                 cookie,
                 algo: {appId: '7b74b'}
             }
@@ -183,11 +236,30 @@ class Main extends Template {
                             }
                         )
                         console.log(this.haskey(apStart, 'errMsg') || apStart)
-                        // await this.wait(1000)
+                        if (this.match(/\d+秒/, i.info)) {
+                            let ts = (this.match(/(\d+)秒/, i.info))
+                            try {
+                                let z = await this.sign.jdCurl({
+                                    url: 'https://api.m.jd.com/client.action',
+                                    form: `functionId=apResetTiming&body={"timerId":"${i.componentId}","uniqueId":"${i.taskId}"}&build=169498&client=apple&clientVersion=13.2.8&d_brand=apple&d_model=iPhone13%2C3&ef=1`,
+                                    cookie
+                                })
+                                console.log("等待", ts)
+                                await this.wait(parseInt(ts) * 1000)
+                                let y = await this.sign.jdCurl({
+                                    url: 'https://api.m.jd.com/client.action',
+                                    form: `functionId=apCheckTimingEnd&body={"timerId":"${i.componentId}","uniqueId":"${i.taskId}"}&build=169498&client=apple&clientVersion=13.2.8&d_brand=apple&d_model=iPhone13%2C3&ef=1`,
+                                    cookie
+                                })
+                            } catch (e) {
+                            }
+                            // console.log(y)
+                        }
+                        await this.wait(1000)
                     }
                     else if (i.info.includes("分享")) {
                         let shareUnion = await this.algo.curl({
-                                'url': `https://api.m.jd.com/api?functionId=shareUnionCoupon&appid=u_hongbao&_=1716943673297&loginType=2&body={"unionActId":"${this.dict.unionActId}","actId":"${this.dict.actId}","platform":4,"unionShareId":"","d":"${this.dict.d}","supportPic":2,"taskId":"${i.taskId}"}&client=apple&clientVersion=12.3.1&osVersion=15.1.1&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=wifi&openudid=`,
+                                'url': `https://api.m.jd.com/api?functionId=shareUnionCoupon&appid=u_hongbao&_=1716943673297&loginType=2&body={"unionActId":"${this.dict.unionActId}","actId":"${this.dict.actId}","platform":5,"unionShareId":"","d":"${this.dict.d}","supportPic":2,"taskId":"${i.taskId}"}&client=apple&clientVersion=12.3.1&osVersion=15.1.1&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=wifi&openudid=`,
                                 cookie,
                                 appId: 'c10dc'
                             }
@@ -203,7 +275,7 @@ class Main extends Template {
                         )
                         let getCoupons = await this.algo.curl({
                                 url: `https://api.m.jd.com/api`,
-                                form: `functionId=getCoupons&appid=u_hongbao&_=1716912812082&loginType=2&body={"actId":"${this.dict.actId}","unionActId":"${this.dict.unionActId}","platform":4,"d":"${this.dict.d}","unionShareId":"","type":8,"qdPageId":"MO-J2011-1","mdClickId":"jxhongbao_ck","actType":1,"taskId":"${i.taskId}","agreeState":0}&client=apple&clientVersion=1.1.0&osVersion=iOS&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=&openudid=&uuid=17165464753211715186324&aid=&oaid=&ext={"idfa":""}&x-api-eid-token=`,
+                                form: `functionId=getCoupons&appid=u_hongbao&_=1716912812082&loginType=2&body={"actId":"${this.dict.actId}","unionActId":"${this.dict.unionActId}","platform":5,"d":"${this.dict.d}","unionShareId":"","type":8,"qdPageId":"MO-J2011-1","mdClickId":"jxhongbao_ck","actType":1,"taskId":"${i.taskId}","agreeState":0}&client=apple&clientVersion=1.1.0&osVersion=iOS&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=&openudid=&uuid=17165464753211715186324&aid=&oaid=&ext={"idfa":""}&x-api-eid-token=`,
                                 cookie,
                                 algo: {
                                     appId: 'c822a'
@@ -212,7 +284,7 @@ class Main extends Template {
                         )
                         let getCoupons2 = await this.algo.curl({
                                 url: `https://api.m.jd.com/api`,
-                                form: `functionId=getCoupons&appid=u_hongbao&_=1716912812082&loginType=2&body={"actId":"${this.dict.actId}","unionActId":"${this.dict.unionActId}","platform":4,"d":"${this.dict.d}","unionShareId":"","type":8,"qdPageId":"MO-J2011-1","mdClickId":"jxhongbao_ck","actType":1,"taskId":"${i.taskId}","agreeState":1}&client=apple&clientVersion=1.1.0&osVersion=iOS&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=&openudid=&uuid=17165464753211715186324&aid=&oaid=&ext={"idfa":""}&x-api-eid-token=`,
+                                form: `functionId=getCoupons&appid=u_hongbao&_=1716912812082&loginType=2&body={"actId":"${this.dict.actId}","unionActId":"${this.dict.unionActId}","platform":5,"d":"${this.dict.d}","unionShareId":"","type":8,"qdPageId":"MO-J2011-1","mdClickId":"jxhongbao_ck","actType":1,"taskId":"${i.taskId}","agreeState":1}&client=apple&clientVersion=1.1.0&osVersion=iOS&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=&openudid=&uuid=17165464753211715186324&aid=&oaid=&ext={"idfa":""}&x-api-eid-token=`,
                                 cookie,
                                 algo: {
                                     appId: 'c822a'
@@ -281,14 +353,14 @@ class Main extends Template {
             }
         }
         qry = await this.algo.curl({
-                'url': `https://api.m.jd.com/api?functionId=queryFullGroupInfoMap&appid=u_hongbao&_=1716946027013&loginType=2&body={"actId":"${this.dict.actId}","unionActId":"${this.dict.unionActId}","platform":4,"d":"${this.dict.d}","taskType":1,"prstate":0}&client=apple&clientVersion=12.3.1&osVersion=15.1.1&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=wifi&openudid=&aid=&oaid=`,
+                'url': `https://api.m.jd.com/api?functionId=queryFullGroupInfoMap&appid=u_hongbao&_=1716946027013&loginType=2&body={"actId":"${this.dict.actId}","unionActId":"${this.dict.unionActId}","platform":5,"d":"${this.dict.d}","taskType":1,"prstate":0}&client=apple&clientVersion=12.3.1&osVersion=15.1.1&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=wifi&openudid=&aid=&oaid=`,
                 cookie,
                 algo: {appId: '7b74b'}
             }
         )
         let getCoupons = await this.algo.curl({
                 url: `https://api.m.jd.com/api`,
-                form: `functionId=getCoupons&appid=u_hongbao&_=1716912812082&loginType=2&body={"actId":"${this.dict.actId}","unionActId":"${this.dict.unionActId}","platform":4,"d":"${this.dict.d}","unionShareId":"","type":3,"qdPageId":"MO-J2011-1","mdClickId":"jxhongbao_ck","actType":1}&client=apple&clientVersion=1.1.0&osVersion=iOS&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=&openudid=&uuid=17165464753211715186324&aid=&oaid=&ext={"idfa":""}&x-api-eid-token=`,
+                form: `functionId=getCoupons&appid=u_hongbao&_=1716912812082&loginType=2&body={"actId":"${this.dict.actId}","unionActId":"${this.dict.unionActId}","platform":5,"d":"${this.dict.d}","unionShareId":"","type":3,"qdPageId":"MO-J2011-1","mdClickId":"jxhongbao_ck","actType":1}&client=apple&clientVersion=1.1.0&osVersion=iOS&screen=390*844&d_brand=iPhone&d_model=iPhone&lang=zh-CN&networkType=&openudid=&uuid=17165464753211715186324&aid=&oaid=&ext={"idfa":""}&x-api-eid-token=`,
                 cookie,
                 algo: {
                     appId: 'c822a'
@@ -299,11 +371,13 @@ class Main extends Template {
     }
 
     async shareId() {
-        let c1 = this.code.slice(0, 2)
-        let c2 = this.code.slice(2)
-        c2.push(this.random(this.unionShareId, 1)[0])
-        c2 = this.random(c2, c2.length + 1)
-        this.code = this.unique([...c1, ...c2])
+        if (this.code.length>2) {
+            let c1 = this.code.slice(0, 2)
+            let c2 = this.code.slice(2)
+            c2.push(this.random(this.unionShareId, 1)[0])
+            c2 = this.random(c2, c2.length + 1)
+            this.code = this.unique([...c1, ...c2])
+        }
     }
 }
 
